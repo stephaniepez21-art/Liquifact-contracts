@@ -36,7 +36,7 @@ use super::super::{
     MAX_ATTESTATION_APPEND_ENTRIES, MAX_ATTESTATION_REVOKE_BATCH,
 };
 use super::assert_contract_error;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::{Address, BytesN, Env, Vec as SorobanVec};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -70,6 +70,7 @@ fn init_escrow(env: &Env, client: &LiquifactEscrowClient) -> Address {
         &None,
         &None,
         &None::<i64>,
+        &None::<u32>,
     );
     admin
 }
@@ -778,8 +779,11 @@ fn test_pre_init_rejected_operations_preserve_defaults() {
     let defaults = client.get_attestation_config();
     assert_eq!(defaults.max_append_entries, MAX_ATTESTATION_APPEND_ENTRIES);
     assert_eq!(defaults.max_revoke_batch, MAX_ATTESTATION_REVOKE_BATCH);
-    assert_eq!(defaults.max_append_batch, MAX_ATTESTATION_APPEND_BATCH);
-    assert_eq!(defaults.max_read_page, MAX_ATTESTATION_READ_PAGE);
+    assert_eq!(
+        defaults.max_append_batch,
+        crate::MAX_ATTESTATION_APPEND_BATCH
+    );
+    assert_eq!(defaults.max_read_page, crate::MAX_ATTESTATION_READ_PAGE);
     assert!(!defaults.primary_bound);
     assert_eq!(defaults.append_log_length, 0);
 }

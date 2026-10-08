@@ -1,4 +1,3 @@
-
 use soroban_sdk::contracterror;
 
 /// Stable typed errors emitted by LiquiFact escrow entrypoints.
@@ -121,6 +120,14 @@ pub enum EscrowError {
     CollateralTimestampBackwards = 62,
     /// [`LiquifactEscrow::clear_sme_collateral_commitment`] called when no pledge exists.
     NoCollateralToClear = 63,
+    /// [`LiquifactEscrow::set_collateral_limit`] received a non-positive ceiling.
+    CollateralLimitNotPositive = 64,
+    /// [`LiquifactEscrow::set_collateral_limit`] received a ceiling above
+    /// [`MAX_INVOICE_AMOUNT`].
+    CollateralLimitExceedsMax = 65,
+    /// [`LiquifactEscrow::record_sme_collateral_commitment`] reported an amount above the
+    /// configured [`DataKey::CollateralLimit`] ceiling.
+    CollateralLimitExceeded = 66,
 
     // -------------------------------------------------------------------------
     // Allowlist, Caps & Batches (70..89)
@@ -445,4 +452,34 @@ pub enum EscrowError {
     PartialSettleNotOpen = 281,
     /// [`LiquifactEscrow::get_contributions`] exceeded [`MAX_INVESTOR_READ_BATCH`].
     ContributionReadBatchTooLarge = 282,
+
+    // -------------------------------------------------------------------------
+    // Concurrency guards & external-call boundaries (283..289)
+    // -------------------------------------------------------------------------
+    /// A collateral mutation was attempted while another one held the mutation lock.
+    /// No state was modified.
+    ConcurrentMutation = 283,
+    /// A token transfer leg for the same (direction, token, from, to) tuple is already
+    /// in flight. The guard lives in temporary storage, so it cannot outlive the frame.
+    ConcurrentTransferInFlight = 284,
+    /// A token transfer leg replayed a nonce that was already consumed for the same leg.
+    TransferReplayDetected = 285,
+    /// Outbound transfer direction: sender and recipient are the same address.
+    TransferSameSenderRecipient = 286,
+    /// Inbound transfer direction: sender and recipient are the same address.
+    InboundTransferSameSenderRecipient = 287,
+
+    // -------------------------------------------------------------------------
+    // Attestation limits & batch bounds (291..294)
+    // -------------------------------------------------------------------------
+    /// [`LiquifactEscrow::set_attestation_limit`] received a value outside
+    /// `MIN_ATTESTATION_LIMIT..=MAX_ATTESTATION_LIMIT`.
+    AttestationLimitOutOfRange = 291,
+    /// [`LiquifactEscrow::append_attestation_digests`] received an empty batch.
+    AttestationAppendBatchEmpty = 292,
+    /// [`LiquifactEscrow::append_attestation_digests`] exceeded
+    /// [`MAX_ATTESTATION_APPEND_BATCH`].
+    AttestationAppendBatchTooLarge = 293,
+    /// Call did not carry a contract ID, so the registered contract address is unknown.
+    NotInitialized = 294,
 }

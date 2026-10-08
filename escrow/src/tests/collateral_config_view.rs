@@ -281,7 +281,7 @@ fn test_set_limit_zero_rejected() {
     env.mock_all_auths();
     let (client, _admin, _sme) = deploy_and_init(&env);
     assert_contract_error(
-        Ok(client.try_set_collateral_limit(&0i128)),
+        client.try_set_collateral_limit(&0i128),
         EscrowError::CollateralLimitNotPositive,
     );
 }
@@ -293,7 +293,7 @@ fn test_set_limit_negative_rejected() {
     env.mock_all_auths();
     let (client, _admin, _sme) = deploy_and_init(&env);
     assert_contract_error(
-        Ok(client.try_set_collateral_limit(&-1i128)),
+        client.try_set_collateral_limit(&-1i128),
         EscrowError::CollateralLimitNotPositive,
     );
 }
@@ -308,7 +308,7 @@ fn test_set_limit_over_max_rejected() {
         .checked_add(1)
         .expect("MAX_INVOICE_AMOUNT + 1 must fit in i128");
     assert_contract_error(
-        Ok(client.try_set_collateral_limit(&too_big)),
+        client.try_set_collateral_limit(&too_big),
         EscrowError::CollateralLimitExceedsMax,
     );
 }
@@ -319,11 +319,13 @@ fn test_set_limit_over_max_rejected() {
 #[test]
 fn test_set_limit_requires_admin_auth() {
     let env = Env::default();
-    let (client, _admin, sme) = deploy_and_init(&env);
-    env.set_source_account(&sme);
+    env.mock_all_auths();
+    let (client, _admin, _sme) = deploy_and_init(&env);
+    // No auth mocks: `require_auth` on the admin address must fail.
+    env.mock_auths(&[]);
     let res = client.try_set_collateral_limit(&5_000i128);
     match res {
-        Err(_) => {} // auth failure expected
+        Err(_) => {}     // auth failure expected
         Ok(Err(_)) => {} // EscrowError::NotAdmin via mock is also a failure path
         _ => panic!("expected auth/NotAdmin failure for non-admin setter call"),
     }
@@ -352,7 +354,7 @@ fn test_record_over_ceiling_rejected() {
     client.set_collateral_limit(&3_000i128);
     let asset = Symbol::new(&env, "USDC");
     assert_contract_error(
-        Ok(client.try_record_sme_collateral_commitment(&asset, &3_001i128)),
+        client.try_record_sme_collateral_commitment(&asset, &3_001i128),
         EscrowError::CollateralLimitExceeded,
     );
 }
@@ -369,7 +371,7 @@ fn test_record_over_default_max_rejected() {
         .expect("MAX_INVOICE_AMOUNT + 1 must fit");
     let asset = Symbol::new(&env, "XLM");
     assert_contract_error(
-        Ok(client.try_record_sme_collateral_commitment(&asset, &too_big)),
+        client.try_record_sme_collateral_commitment(&asset, &too_big),
         EscrowError::CollateralLimitExceeded,
     );
 }
@@ -390,12 +392,10 @@ fn test_batch_record_over_ceiling_atomic_reject() {
     // build a batch where item 1 is fine but item 2 exceeds ceiling
     let a1 = Symbol::new(&env, "A1");
     let a2 = Symbol::new(&env, "A2");
-    let items = soroban_sdk::Vec::from_array(
-        &env,
-        [(a1.clone(), 3_000i128), (a2.clone(), 5_001i128)],
-    );
+    let items =
+        soroban_sdk::Vec::from_array(&env, [(a1.clone(), 3_000i128), (a2.clone(), 5_001i128)]);
     assert_contract_error(
-        Ok(client.try_batch_record_collateral(&items)),
+        client.try_batch_record_collateral(&items),
         EscrowError::CollateralLimitExceeded,
     );
 

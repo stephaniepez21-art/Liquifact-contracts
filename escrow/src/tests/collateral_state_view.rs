@@ -41,9 +41,7 @@
 //!   succeeds (equality is allowed, as it is the replay case) but no backwards
 //!   timestamp passes.
 
-use super::super::{
-    CollateralState, LiquifactEscrow, LiquifactEscrowClient, MAX_INVOICE_AMOUNT,
-};
+use super::super::{CollateralState, LiquifactEscrow, LiquifactEscrowClient, MAX_INVOICE_AMOUNT};
 use crate::tests::assert_contract_error;
 use crate::EscrowError;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -234,7 +232,12 @@ fn idempotent_double_clear() {
 
     client.clear_sme_collateral_commitment();
     let a = client.get_collateral_state();
-    client.clear_sme_collateral_commitment();
+    // A retried clear is rejected instead of silently removing a second time, so a
+    // duplicate submission can never be mistaken for a fresh write.
+    assert_contract_error(
+        client.try_clear_sme_collateral_commitment(),
+        EscrowError::NoCollateralToClear,
+    );
     let b = client.get_collateral_state();
 
     assert_atomic_snapshot_invariant(&a);
@@ -398,7 +401,7 @@ fn stale_racing_write_with_earlier_timestamp_rejected() {
     li2.timestamp = 999;
     env.ledger().set(li2);
     assert_contract_error(
-        Ok(client.try_record_sme_collateral_commitment(&asset, &600i128)),
+        client.try_record_sme_collateral_commitment(&asset, &600i128),
         EscrowError::CollateralTimestampBackwards,
     );
 

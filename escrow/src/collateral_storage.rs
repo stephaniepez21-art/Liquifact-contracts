@@ -58,6 +58,7 @@
 //! unlocked, so instances written before this change behave identically. No `migrate`
 //! call is required and [`crate::SCHEMA_VERSION`] is not bumped.
 
+use crate::keys::{collateral_limit_key, collateral_pledge_key};
 use crate::{DataKey, EscrowError, SmeCollateralCommitment, MAX_INVOICE_AMOUNT};
 use soroban_sdk::{contracttype, Env, Symbol};
 
@@ -147,7 +148,7 @@ fn acquire_mutation_lock(env: &Env) -> Result<MutationGuard<'_>, EscrowError> {
 
 /// Read the commitment cell. Never writes. Absent ⇒ `None`.
 pub(crate) fn commitment(env: &Env) -> Option<SmeCollateralCommitment> {
-    env.storage().instance().get(&DataKey::SmeCollateralPledge)
+    env.storage().instance().get(&collateral_pledge_key())
 }
 
 /// Read the configured collateral ceiling. Never writes.
@@ -156,7 +157,7 @@ pub(crate) fn commitment(env: &Env) -> Option<SmeCollateralCommitment> {
 pub(crate) fn limit(env: &Env) -> i128 {
     env.storage()
         .instance()
-        .get(&DataKey::CollateralLimit)
+        .get(&collateral_limit_key())
         .unwrap_or(MAX_INVOICE_AMOUNT)
 }
 
@@ -241,7 +242,7 @@ pub(crate) fn apply_record(
     };
     env.storage()
         .instance()
-        .set(&DataKey::SmeCollateralPledge, &commitment);
+        .set(&collateral_pledge_key(), &commitment);
 
     Ok(RecordOutcome::Applied {
         prior_amount,
@@ -261,9 +262,7 @@ pub(crate) fn apply_clear(env: &Env) -> Result<SmeCollateralCommitment, EscrowEr
     let _guard = acquire_mutation_lock(env)?;
     match commitment(env) {
         Some(existing) => {
-            env.storage()
-                .instance()
-                .remove(&DataKey::SmeCollateralPledge);
+            env.storage().instance().remove(&collateral_pledge_key());
             Ok(existing)
         }
         None => Err(EscrowError::NoCollateralToClear),
@@ -291,7 +290,7 @@ pub(crate) fn apply_set_limit(env: &Env, new_limit: i128) -> Result<(), EscrowEr
     let _guard = acquire_mutation_lock(env)?;
     env.storage()
         .instance()
-        .set(&DataKey::CollateralLimit, &new_limit);
+        .set(&collateral_limit_key(), &new_limit);
     Ok(())
 }
 
