@@ -52,7 +52,9 @@ fn deploy_and_init(env: &Env) -> (LiquifactEscrowClient<'_>, Address, Address) {
         &None,
         &None,
         &None,
+        &None,
         &None::<i64>,
+        &None::<u32>,
     );
 
     (client, admin, sme)
@@ -365,7 +367,7 @@ fn test_collateral_clear_is_one_shot() {
 
     env.ledger().with_mut(|l| l.timestamp = 1_000);
     client.record_sme_collateral_commitment(&Symbol::new(&env, "GOLD"), &500_000i128);
-    assert!(client.clear_sme_collateral_commitment().is_ok());
+    client.clear_sme_collateral_commitment();
 
     // The commitment is gone; a second clear is rejected rather than double-removing.
     let result = client.try_clear_sme_collateral_commitment();

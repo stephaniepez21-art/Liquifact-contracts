@@ -1,4 +1,4 @@
-#allow(dead_code, unused_imports)]
+#[allow(dead_code, unused_imports)]
 /// Validation boundaries for the key constructors in `escrow/src/keys.rs`.
 ///
 /// These tests pin the deterministic behavior of every key builder:
@@ -10,10 +10,9 @@
 /// The key constructors are the only supported way to build a `DataKey`
 /// for funding storage; these tests are the regression barrier against
 /// discriminant drift or accidental renames.
-
 use crate::keys::*;
 use crate::DataKey;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 //// ---------------------------------------------------------------------------
 /// Per-investor key family
@@ -43,10 +42,7 @@ fn investor_contribution_distinct_investors_differ() {
     let env = Env::default();
     let a = Address::generate(&env);
     let b = Address::generate(&env);
-    assert_ne!(
-        investor_contribution(a),
-        investor_contribution(b)
-    );
+    assert_ne!(investor_contribution(a), investor_contribution(b));
 }
 
 #[test]
@@ -164,10 +160,7 @@ fn callback_context_matches_variant() {
 fn callback_context_boundaries_are_distinct() {
     assert_ne!(callback_context(0), callback_context(1));
     assert_ne!(callback_context(0), callback_context(u64::MAX));
-    assert_ne!(
-        callback_context(u64::MAX - 1),
-        callback_context(u64::MAX)
-    );
+    assert_ne!(callback_context(u64::MAX - 1), callback_context(u64::MAX));
     assert_ne!(callback_context(1), callback_context(u64::MAX - 1));
 }
 
@@ -217,37 +210,20 @@ fn callback_context_does_not_collide_with_singletons() {
 /// distinct from every other key family.
 #[test]
 fn collateral_pledge_key_matches_variant() {
-    let env = Env::default();
-    let investor = Address::generate(&env);
-    assert_eq!(
-        collateral_pledge_key(investor.clone()),
-        DataKey::SmeCollateralPledge(investor)
-    );
+    assert_eq!(collateral_pledge_key(), DataKey::SmeCollateralPledge);
 }
 
 #[test]
 fn collateral_pledge_key_is_deterministic() {
-    let env = Env::default();
-    let investor = Address::generate(&env);
-    assert_eq!(
-        collateral_pledge_key(investor.clone()),
-        collateral_pledge_key(investor.clone())
-    );
+    assert_eq!(collateral_pledge_key(), collateral_pledge_key());
 }
 
 #[test]
-fn collateral_pledge_key_distinct_investors_differ() {
-    let env = Env::default();
-    let a = Address::generate(&env);
-    let b = Address::generate(&env);
-    assert_ne!(collateral_pledge_key(a), collateral_pledge_key(b));
-}
-
-#[test]
-fn collateral_pledge_key_does_not_collide_with_investor_keys() {
+fn collateral_pledge_key_does_not_collide_with_other_keys() {
     let env = Env::default();
     let investor = Address::generate(&env);
-    let collateral = collateral_pledge_key(investor.clone());
+    let collateral = collateral_pledge_key();
+    assert_ne!(collateral, collateral_limit_key());
     assert_ne!(collateral, investor_contribution(investor.clone()));
     assert_ne!(collateral, investor_effective_yield(investor.clone()));
     assert_ne!(collateral, investor_claim_not_before(investor.clone()));

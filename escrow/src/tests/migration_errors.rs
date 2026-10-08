@@ -45,7 +45,7 @@ fn test_migration_version_mismatch() {
     init_client(&env, &client, &admin, &sme, "MIGSMK1");
     // stored = SCHEMA_VERSION (6), from_version = 5 → mismatch
     assert_contract_error(
-        client.try_migrate(&(SCHEMA_VERSION - 1), &0u32),
+        client.try_migrate(&(SCHEMA_VERSION - 1)),
         EscrowError::MigrationVersionMismatch,
     );
 
@@ -63,14 +63,14 @@ fn test_already_current_schema_version() {
     let sme = Address::generate(&env);
     init_client(&env, &client, &admin, &sme, "MIGSMK2");
     assert_contract_error(
-        client.try_migrate(&SCHEMA_VERSION, &0u32),
+        client.try_migrate(&SCHEMA_VERSION),
         EscrowError::AlreadyCurrentSchemaVersion,
     );
 
     // Idempotent rejection: retrying the same call yields the same error and
     // leaves the version untouched.
     assert_contract_error(
-        client.try_migrate(&SCHEMA_VERSION, &0u32),
+        client.try_migrate(&SCHEMA_VERSION),
         EscrowError::AlreadyCurrentSchemaVersion,
     );
     assert_version_unchanged(&env, &client.address, SCHEMA_VERSION);
@@ -87,10 +87,7 @@ fn test_no_migration_path() {
     env.as_contract(&contract_id, || {
         env.storage().instance().set(&DataKey::Version, &1u32);
     });
-    assert_contract_error(
-        client.try_migrate(&1u32, &0u32),
-        EscrowError::NoMigrationPath,
-    );
+    assert_contract_error(client.try_migrate(&1u32), EscrowError::NoMigrationPath);
 }
 
 #[test]
@@ -128,10 +125,7 @@ fn test_migrate_exhaustive_below_current_returns_92() {
         env.as_contract(&contract_id, || {
             env.storage().instance().set(&DataKey::Version, &from);
         });
-        assert_contract_error(
-            client.try_migrate(&from, &0u32),
-            EscrowError::NoMigrationPath,
-        );
+        assert_contract_error(client.try_migrate(&from), EscrowError::NoMigrationPath);
         // Persistence: failed migrate must not rewrite Version.
         let stored: u32 = env.as_contract(&contract_id, || {
             env.storage().instance().get(&DataKey::Version).unwrap_or(0)
@@ -151,10 +145,7 @@ fn test_migrate_zero_from_version_returns_92() {
     env.as_contract(&contract_id, || {
         env.storage().instance().set(&DataKey::Version, &0u32);
     });
-    assert_contract_error(
-        client.try_migrate(&0u32, &0u32),
-        EscrowError::NoMigrationPath,
-    );
+    assert_contract_error(client.try_migrate(&0u32), EscrowError::NoMigrationPath);
 }
 
 #[test]
@@ -166,30 +157,29 @@ fn test_migrate_above_current_returns_91() {
     let sme = Address::generate(&env);
     init_client(&env, &client, &admin, &sme, "ABOVE001");
     assert_contract_error(
-        client.try_migrate(&(SCHEMA_VERSION + 1), &0u32),
+        client.try_migrate(&(SCHEMA_VERSION + 1)),
         EscrowError::MigrationVersionMismatch,
     );
     // Exact current also 91 (boundary).
     assert_contract_error(
-        client.try_migrate(&SCHEMA_VERSION, &0u32),
+        client.try_migrate(&SCHEMA_VERSION),
         EscrowError::AlreadyCurrentSchemaVersion,
     );
 }
 
 #[test]
-fn test_migrate_wrong_nonce_rejected() {
+fn test_migrate_requires_admin_auth() {
     let env = Env::default();
     env.mock_all_auths();
     let client = deploy(&env);
     let admin = Address::generate(&env);
     let sme = Address::generate(&env);
     init_client(&env, &client, &admin, &sme, "NONCE001");
-    // Current nonce is 0; future nonce must fail with AdminNonceMismatch.
-    assert_contract_error(
-        client.try_migrate(&SCHEMA_VERSION, &99u32),
-        EscrowError::AdminNonceMismatch,
-    );
-    // Version unchanged after nonce failure.
+    // `migrate` is not nonce-gated, but it is admin-gated: clearing the auth
+    // mocks must make the call fail and leave the stored version untouched.
+    env.mock_auths(&[]);
+    assert_or_error(client.try_migrate(&SCHEMA_VERSION));
+    // Version unchanged after the rejected call.
     assert_eq!(client.get_version(), SCHEMA_VERSION);
 }
 

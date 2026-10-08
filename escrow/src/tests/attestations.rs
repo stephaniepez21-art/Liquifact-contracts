@@ -27,9 +27,9 @@ fn assert_contract_error<T, E>(
 {
     let expected_code = expected as u32;
     match result {
-        Err(Ok(error)) => assert_eq(error, Error::from_contract_error(expected_code)),
-        Err(Err(InvokeError::Contract(code))) => assert_eq(code, expected_code),
-        other => panic("expected ContractError({expected_code}), got {other:?}"),
+        Err(Ok(error)) => assert_eq!(error, Error::from_contract_error(expected_code)),
+        Err(Err(InvokeError::Contract(code))) => assert_eq!(code, expected_code),
+        other => panic!("expected ContractError({expected_code}), got {other:?}"),
     }
 }
 
@@ -49,13 +49,13 @@ fn setup_with_init(env: &Env) -> (LiquifactEscrowClient<'_>, Address) {
     (client, admin)
 }
 
-fn attestation_log_stats(client: &LiquifactEscrowClient<'>) -> (u32, u32) {
+fn attestation_log_stats(client: &LiquifactEscrowClient<'_>) -> (u32, u32) {
     let used = client.get_attestation_append_log().len();
     (used, MAX_ATTESTATION_APPEND_ENTRIES.saturating_sub(used))
 }
 
 /// The number of free attestation append-log slots remaining.
-fn remaining_attestation_slots(client: &LiquifactEscrowClient<'>) -> u32 {
+fn remaining_attestation_slots(client: &LiquifactEscrowClient<'_>) -> u32 {
     let used = client.get_attestation_append_log().len();
     MAX_ATTESTATION_APPEND_ENTRIES.saturating_sub(used)
 }
@@ -75,20 +75,13 @@ fn test_bind_primary_hash_stores_and_reads() {
     let (client, _) = setup_with_init(&env);
     let d = digest(&env, 0xAB);
     client.bind_primary_attestation_hash(&d);
-    assert_eq(client.get_primary_attestation_hash(), Some(d.clone()));
+    // Snapshot before any further call: `env.events().all()` only retains the
+    // events of the most recent invocation.
+    let bound = env.events().all();
+    assert_eq!(client.get_primary_attestation_hash(), Some(d.clone()));
 
-    // Event capture is best-effort and only asserted when the event type is available.
-    // This keeps the storage invariant tested even if the event schema evolves.
-    let all_events = env.events().all();
-    let all_events_list = all_events.events();
-    if let Some(last_event) = all_events_list.last() {
-        let contract_id = client.address.clone();
-        let invoice_id = client.get_escrow().invoice_id;
-        // The event payload is validated only when the contract exposes the type.
-        // We assert the event name and invoice id are present in the XDR encoding.
-        let xdr = last_event.clone().to_xdr(&env, &contract_id);
-        let __ = (invoice_id, xdr, contract_id);
-    }
+    // The bind emits exactly one contract event from this escrow instance.
+    assert_eq!(bound.filter_by_contract(&client.address).events().len(), 1);
 }
 
 /// Before any bind the getter returns `None`.
@@ -96,7 +89,7 @@ fn test_bind_primary_hash_stores_and_reads() {
 fn test_get_primary_hash_none_before_bind() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    assert_eq(client.get_primary_attestation_hash(), None);
+    assert_eq!(client.get_primary_attestation_hash(), None);
 }
 
 /// A second bind with the **same** digest must panic — single-set is unconditional.
@@ -109,7 +102,7 @@ fn test_bind_primary_hash_same_digest_fails() {
 
     let res = client.try_bind_primary_attestation_hash(&d);
     assert_contract_error(res, EscrowError::PrimaryAttestationAlreadyBound);
-    assert_eq(client.get_primary_attestation_hash(), Some(d));
+    assert_eq!(client.get_primary_attestation_hash(), Some(d));
 }
 
 /// A second bind with a **different** digest must also panic — no replacement allowed.
@@ -123,7 +116,7 @@ fn test_bind_primary_hash_different_digest_fails() {
     let second = digest(&env, 0x02);
     let res = client.try_bind_primary_attestation_hash(&second);
     assert_contract_error(res, EscrowError::PrimaryAttestationAlreadyBound);
-    assert_eq(client.get_primary_attestation_hash(), Some(first));
+    assert_eq!(client.get_primary_attestation_hash(), Some(first));
 }
 
 /// Non-admin caller must not be able to bind the primary hash.
@@ -136,7 +129,7 @@ fn test_bind_primary_hash_non_admin_fails() {
     let d = digest(&env, 0xFF);
 
     assert_or_error(client.try_bind_primary_attestation_hash(&d));
-    assert_eq(client.get_primary_attestation_hash(), None);
+    assert_eq!(client.get_primary_attestation_hash(), None);
 }
 
 // ----------------------------------------------------------------------------
@@ -148,7 +141,7 @@ fn test_bind_primary_hash_non_admin_fails() {
 fn test_append_log_empty_before_first_append() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    assert_eq(client.get_attestation_append_log().len(), 0);
+    assert_eq!(client.get_attestation_append_log().len(), 0);
 }
 
 /// The stats view reports zero used entries and the full remaining capacity before any append.
@@ -157,8 +150,8 @@ fn test_attestation_log_stats_empty_before_first_append() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     let (used, remaining) = attestation_log_stats(&client);
-    assert_eq(used, 0);
-    assert_eq(remaining, MAX_ATTESTATION_APPEND_ENTRIES);
+    assert_eq!(used, 0);
+    assert_eq!(remaining, MAX_ATTESTATION_APPEND_ENTRIES);
 }
 
 /// The stats view tracks partially filled logs without reading the full vector contents.
@@ -170,8 +163,8 @@ fn test_attestation_log_stats_tracks_partial_fill() {
         client.append_attestation_digest(&digest(&env, i));
     }
     let (used, remaining) = attestation_log_stats(&client);
-    assert_eq(used, 5);
-    assert_eq(
+    assert_eq!(used, 5);
+    assert_eq!(
         remaining_attestation_slots(&client),
         MAX_ATTESTATION_APPEND_ENTRIES - 5
     );
@@ -186,15 +179,15 @@ fn test_attestation_log_stats_full_and_after_capacity_error() {
         client.append_attestation_digest(&digest(&env, i));
     }
     let (used, remaining) = attestation_log_stats(&client);
-    assert_eq(used, MAX_ATTESTATION_APPEND_ENTRIES);
-    assert_eq(remaining_attestation_slots(&client), 0);
+    assert_eq!(used, MAX_ATTESTATION_APPEND_ENTRIES);
+    assert_eq!(remaining_attestation_slots(&client), 0);
 
     let result = client.try_append_attestation_digest(&digest(&env, 0xFF));
     assert_contract_error(result, EscrowError::AttestationAppendLogCapacityReached);
 
     let (used, remaining) = attestation_log_stats(&client);
-    assert_eq(used, MAX_ATTESTATION_APPEND_ENTRIES);
-    assert_eq(remaining_attestation_slots(&client), 0);
+    assert_eq!(used, MAX_ATTESTATION_APPEND_ENTRIES);
+    assert_eq!(remaining_attestation_slots(&client), 0);
 }
 
 /// Single append is stored at index 0.
@@ -205,8 +198,8 @@ fn test_append_single_entry_stored() {
     let d = digest(&env, 0x10);
     client.append_attestation_digest(&d);
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 1);
-    assert_eq(log.get(0).unwrap(), d);
+    assert_eq!(log.len(), 1);
+    assert_eq!(log.get(0).unwrap(), d);
 }
 
 /// Multiple appends preserve insertion order.
@@ -218,9 +211,9 @@ fn test_append_multiple_entries_ordered() {
         client.append_attestation_digest(&digest(&env, i));
     }
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 5);
+    assert_eq!(log.len(), 5);
     for i in 0u8..5 {
-        assert_eq(log.get(i as u32).unwrap(), digest(&env, i));
+        assert_eq!(log.get(i as u32).unwrap(), digest(&env, i));
     }
 }
 
@@ -233,7 +226,7 @@ fn test_append_exactly_max_entries_succeeds() {
     for i in 0u8..(MAX_ATTESTATION_APPEND_ENTRIES as u8) {
         client.append_attestation_digest(&digest(&env, i));
     }
-    assert_eq(
+    assert_eq!(
         client.get_attestation_append_log().len(),
         MAX_ATTESTATION_APPEND_ENTRIES
     );
@@ -259,7 +252,7 @@ fn test_append_duplicate_digest_allowed() {
     let d = digest(&env, 0x42);
     client.append_attestation_digest(&d);
     client.append_attestation_digest(&d);
-    assert_eq(client.get_attestation_append_log().len(), 2);
+    assert_eq!(client.get_attestation_append_log().len(), 2);
 }
 
 /// Non-admin caller must not be able to append.
@@ -283,7 +276,7 @@ fn test_primary_bind_does_not_affect_append_log() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     client.bind_primary_attestation_hash(&digest(&env, 0xAA));
-    assert_eq(client.get_attestation_append_log().len(), 0);
+    assert_eq!(client.get_attestation_append_log().len(), 0);
 }
 
 /// Appending does not affect the primary hash.
@@ -292,7 +285,7 @@ fn test_append_does_not_affect_primary_hash() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     client.append_attestation_digest(&digest(&env, 0xBB));
-    assert_eq(client.get_primary_attestation_hash(), None);
+    assert_eq!(client.get_primary_attestation_hash(), None);
 }
 
 /// Both can coexist: bind primary then fill part of the append log.
@@ -305,8 +298,8 @@ fn test_primary_and_append_coexist() {
     for i in 0u8..4 {
         client.append_attestation_digest(&digest(&env, i));
     }
-    assert_eq(client.get_primary_attestation_hash(), Some(primary));
-    assert_eq(client.get_attestation_append_log().len(), 4);
+    assert_eq!(client.get_primary_attestation_hash(), Some(primary));
+    assert_eq!(client.get_attestation_append_log().len(), 4);
 }
 
 /// Revocation does not alter the append log contents — the digest remains readable.
@@ -318,8 +311,8 @@ fn test_revoke_preserves_log_entry() {
     client.append_attestation_digest(&d);
     client.revoke_attestation_digest(&0);
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 1);
-    assert_eq(log.get(0).unwrap(), d);
+    assert_eq!(log.len(), 1);
+    assert_eq!(log.get(0).unwrap(), d);
 }
 
 // ----------------------------------------------------------------------------
@@ -332,12 +325,12 @@ fn test_append_batch_single_entry_stored() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     let d = digest(&env, 0x50);
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     batch.push_back(d.clone());
     client.append_attestation_digests(&batch);
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 1);
-    assert_eq(log.get(0).unwrap(), d);
+    assert_eq!(log.len(), 1);
+    assert_eq!(log.get(0).unwrap(), d);
 }
 
 /// Batch append preserves insertion order and contiguous indexes.
@@ -345,15 +338,15 @@ fn test_append_batch_single_entry_stored() {
 fn test_append_batch_ordered_contiguous() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     for i in 0u8..5 {
         batch.push_back(digest(&env, i));
     }
     client.append_attestation_digests(&batch);
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 5);
-    for in 0u8..5 {
-        assert_eq(log.get(i as u32).unwrap(), digest(&env, i));
+    assert_eq!(log.len(), 5);
+    for i in 0u8..5 {
+        assert_eq!(log.get(i as u32).unwrap(), digest(&env, i));
     }
 }
 
@@ -363,25 +356,28 @@ fn test_append_batch_appends_after_existing() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     client.append_attestation_digest(&digest(&env, 0x01));
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     batch.push_back(digest(&env, 0x2));
     batch.push_back(digest(&env, 0x03));
     client.append_attestation_digests(&batch);
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 3);
-    assert_eq(log.get(0).unwrap(), digest(&env, 0x01));
-    assert_eq(log.get(1).unwrap(), digest(&env, 0x2));
-    assert_eq(log.get(2).unwrap(), digest(&env, 0x03));
+    assert_eq!(log.len(), 3);
+    assert_eq!(log.get(0).unwrap(), digest(&env, 0x01));
+    assert_eq!(log.get(1).unwrap(), digest(&env, 0x2));
+    assert_eq!(log.get(2).unwrap(), digest(&env, 0x03));
 }
 
-/// Batch append of an empty vector is a no-op.
+/// Batch append of an empty vector is rejected before any state is touched.
 #[test]
-fn test_append_batch_empty_noop() {
+fn test_append_batch_empty_rejected() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    let batch = Vec:<new>(&env);
-    client.append_attestation_digests(&batch);
-    assert_eq(client.get_attestation_append_log().len(), 0);
+    let batch = SorobanVec::new(&env);
+    assert_contract_error(
+        client.try_append_attestation_digests(&batch),
+        EscrowError::AttestationAppendBatchEmpty,
+    );
+    assert_eq!(client.get_attestation_append_log().len(), 0);
 }
 
 /// Batch append of a duplicate digest is allowed.
@@ -390,14 +386,14 @@ fn test_append_batch_duplicate_allowed() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     let d = digest(&env, 0x60);
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     batch.push_back(d.clone());
     batch.push_back(d.clone());
     client.append_attestation_digests(&batch);
     let log = client.get_attestation_append_log();
-    assert_eq(log.len(), 2);
-    assert_eq(log.get(0).unwrap(), d.clone());
-    assert_eq(log.get(1).unwrap(), d);
+    assert_eq!(log.len(), 2);
+    assert_eq!(log.get(0).unwrap(), d.clone());
+    assert_eq!(log.get(1).unwrap(), d);
 }
 
 /// Batch append exactly filling the remaining capacity succeeds.
@@ -409,10 +405,10 @@ fn test_append_batch_exactly_fills_capacity() {
     for i in 0u8..(MAX_ATTESTATION_APPEND_ENTRIES as u8 - 1) {
         client.append_attestation_digest(&digest(&env, i));
     }
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     batch.push_back(digest(&env, 0xFE));
     client.append_attestation_digests(&batch);
-    assert_eq(
+    assert_eq!(
         client.get_attestation_append_log().len(),
         MAX_ATTESTATION_APPEND_ENTRIES
     );
@@ -427,12 +423,12 @@ fn test_append_batch_exceeds_capacity_fails() {
     for i in 0u8..(MAX_ATTESTATION_APPEND_ENTRIES as u8 - 1) {
         client.append_attestation_digest(&digest(&env, i));
     }
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     batch.push_back(digest(&env, 0x01));
     batch.push_back(digest(&env, 0x02));
     let res = client.try_append_attestation_digests(&batch);
     assert_contract_error(res, EscrowError::AttestationAppendLogCapacityReached);
-    assert_eq(
+    assert_eq!(
         client.get_attestation_append_log().len(),
         MAX_ATTESTATION_APPEND_ENTRIES - 1
     );
@@ -443,13 +439,13 @@ fn test_append_batch_exceeds_capacity_fails() {
 fn test_append_batch_exceeds_batch_limit_fails() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     for i in 0u8..(MAX_ATTESTATION_APPEND_BATCH as u8 + 1) {
         batch.push_back(digest(&env, i));
     }
     let res = client.try_append_attestation_digests(&batch);
     assert_contract_error(res, EscrowError::AttestationAppendBatchTooLarge);
-    assert_eq(client.get_attestation_append_log().len(), 0);
+    assert_eq!(client.get_attestation_append_log().len(), 0);
 }
 
 /// Batch append at the batch size limit succeeds.
@@ -457,12 +453,12 @@ fn test_append_batch_exceeds_batch_limit_fails() {
 fn test_append_batch_at_limit_succeeds() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    let mut batch = Vec::new(&env);
-    for in 0u8..(MAX_ATTESTATION_APPEND_BATCH as u8) {
+    let mut batch = SorobanVec::new(&env);
+    for i in 0u8..(MAX_ATTESTATION_APPEND_BATCH as u8) {
         batch.push_back(digest(&env, i));
     }
     client.append_attestation_digests(&batch);
-    assert_eq(
+    assert_eq!(
         client.get_attestation_append_log().len(),
         MAX_ATTESTATION_APPEND_BATCH
     );
@@ -475,7 +471,7 @@ fn test_append_batch_non_admin_panics() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     env.mock_auths(&[]);
-    let mut batch = Vec::new(&env);
+    let mut batch = SorobanVec::new(&env);
     batch.push_back(digest(&env, 0x01));
     client.append_attestation_digests(&batch);
 }
@@ -490,11 +486,11 @@ fn test_revoke_batch_single_succeeds() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
     client.append_attestation_digest(&digest(&env, 0x01));
-    let mut indices = Vec::new(&env);
+    let mut indices = SorobanVec::new(&env);
     indices.push_back(0);
     client.revoke_attestation_digests(&indices);
     // The log remains readable after revocation.
-    assert_eq(client.get_attestation_append_log().len(), 1);
+    assert_eq!(client.get_attestation_append_log().len(), 1);
 }
 
 /// Revoke batch exceeding the batch limit must fail.
@@ -502,12 +498,12 @@ fn test_revoke_batch_single_succeeds() {
 fn test_revoke_batch_exceeds_limit_fails() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    let mut indices = Vec::new(&env);
+    let mut indices = SorobanVec::new(&env);
     for i in 0u32..(MAX_ATTESTATION_REVOKE_BATCH + 1) {
         indices.push_back(i);
     }
     let res = client.try_revoke_attestation_digests(&indices);
-    assert_contract_error(res, EscrowError::AttestationRevokeBatchTooLarge);
+    assert_contract_error(res, EscrowError::AttestationBatchTooLarge);
 }
 
 /// Revoke batch at the batch limit succeeds.
@@ -519,23 +515,26 @@ fn test_revoke_batch_at_limit_succeeds() {
     for i in 0u8..(MAX_ATTESTATION_REVOKE_BATCH as u8) {
         client.append_attestation_digest(&digest(&env, i));
     }
-    let mut indices = Vec::new(&env);
+    let mut indices = SorobanVec::new(&env);
     for i in 0u32..(MAX_ATTESTATION_REVOKE_BATCH) {
         indices.push_back(i);
     }
     client.revoke_attestation_digests(&indices);
-    assert_eq(
+    assert_eq!(
         client.get_attestation_append_log().len(),
         MAX_ATTESTATION_REVOKE_BATCH
     );
 }
 
-/// Revoke batch of an empty vector is a no-op.
+/// Revoke batch of an empty vector is rejected before any state is touched.
 #[test]
-fn test_revoke_batch_empty_noop() {
+fn test_revoke_batch_empty_rejected() {
     let env = Env::default();
     let (client, _) = setup_with_init(&env);
-    let indices = Vec::<new>(&env);
-    client.revoke_attestation_digests(&indices);
-    assert_eq(client.get_attestation_append_log().len(), 0);
+    let indices = SorobanVec::new(&env);
+    assert_contract_error(
+        client.try_revoke_attestation_digests(&indices),
+        EscrowError::AttestationBatchEmpty,
+    );
+    assert_eq!(client.get_attestation_append_log().len(), 0);
 }

@@ -58,6 +58,7 @@ fn setup_inited(
         &None,
         &None,
         &None::<i64>,
+        &None::<u32>,
     );
     (client, admin, sme, treasury, token)
 }
@@ -135,6 +136,7 @@ fn setup_funded(
         &None,
         &None,
         &None::<i64>,
+        &None::<u32>,
     );
     let investor = Address::generate(env);
     client.fund(&investor, &100_000_000_000i128);
@@ -214,7 +216,7 @@ fn test_accept_admin_wrong_signer_preserves_handover_state() {
     let (client, admin, _sme, _treasury, _token) = setup_inited(&env);
     let pending_admin = Address::generate(&env);
     let stranger = Address::generate(&env);
-    client.propose_admin(&pending_admin, &0u32);
+    client.propose_admin(&pending_admin, &None);
 
     env.mock_auths(&[MockAuth {
         address: &stranger,
@@ -227,7 +229,10 @@ fn test_accept_admin_wrong_signer_preserves_handover_state() {
     }]);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| client.accept_admin()));
 
-    assert!(result.is_err(), "expected pending-admin authorization to be enforced");
+    assert!(
+        result.is_err(),
+        "expected pending-admin authorization to be enforced"
+    );
     assert_eq!(client.get_escrow().admin, admin);
     assert_eq!(client.get_pending_admin(), Some(pending_admin));
 }
@@ -238,7 +243,7 @@ fn test_accept_admin_pending_admin_authorization_succeeds() {
     let env = Env::default();
     let (client, _admin, _sme, _treasury, _token) = setup_inited(&env);
     let pending_admin = Address::generate(&env);
-    client.propose_admin(&pending_admin, &0u32);
+    client.propose_admin(&pending_admin, &None);
 
     env.mock_auths(&[MockAuth {
         address: &pending_admin,

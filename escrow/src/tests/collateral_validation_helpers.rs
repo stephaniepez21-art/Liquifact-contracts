@@ -6,7 +6,11 @@
 
 use crate::tests::{assert_contract_error, setup};
 use crate::{EscrowError, MAX_INVOICE_AMOUNT};
-use soroban_sdk::{symbol_short, testutils::Address as _, Address, Env, Symbol};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Ledger as _},
+    Address, Env, Symbol,
+};
 
 fn init_escrow(env: &Env, client: &crate::LiquifactEscrowClient, admin: &Address, sme: &Address) {
     let token = Address::generate(env);
@@ -30,6 +34,7 @@ fn init_escrow(env: &Env, client: &crate::LiquifactEscrowClient, admin: &Address
         &None,
         &None,
         &None::<i64>,
+        &None::<u32>,
     );
 }
 
@@ -506,21 +511,24 @@ fn test_collateral_commitment_error_codes_unchanged() {
     let asset = Symbol::new(&env, "USDC");
 
     // Verify exact error code: 60 for CollateralAmountNotPositive
-    let result = client.try_record_sme_collateral_commitment(&asset, &0i128);
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), EscrowError::CollateralAmountNotPositive);
+    assert_contract_error(
+        client.try_record_sme_collateral_commitment(&asset, &0i128),
+        EscrowError::CollateralAmountNotPositive,
+    );
 
     // Verify exact error code: 61 for CollateralAssetEmpty
     let empty = Symbol::new(&env, "");
-    let result = client.try_record_sme_collateral_commitment(&empty, &5_000i128);
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), EscrowError::CollateralAssetEmpty);
+    assert_contract_error(
+        client.try_record_sme_collateral_commitment(&empty, &5_000i128),
+        EscrowError::CollateralAssetEmpty,
+    );
 
     // Verify exact error code: 64 for CollateralLimitExceeded
     client.set_collateral_limit(&1_000i128);
-    let result = client.try_record_sme_collateral_commitment(&asset, &1_001i128);
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), EscrowError::CollateralLimitExceeded);
+    assert_contract_error(
+        client.try_record_sme_collateral_commitment(&asset, &1_001i128),
+        EscrowError::CollateralLimitExceeded,
+    );
 }
 
 #[test]
@@ -530,14 +538,16 @@ fn test_collateral_limit_error_codes_unchanged() {
     init_escrow(&env, &client, &admin, &sme);
 
     // Verify exact error code: 63 for CollateralLimitNotPositive
-    let result = client.try_set_collateral_limit(&0i128);
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), EscrowError::CollateralLimitNotPositive);
+    assert_contract_error(
+        client.try_set_collateral_limit(&0i128),
+        EscrowError::CollateralLimitNotPositive,
+    );
 
     // Verify exact error code: 65 for CollateralLimitExceedsMax
-    let result = client.try_set_collateral_limit(&(MAX_INVOICE_AMOUNT + 1));
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), EscrowError::CollateralLimitExceedsMax);
+    assert_contract_error(
+        client.try_set_collateral_limit(&(MAX_INVOICE_AMOUNT + 1)),
+        EscrowError::CollateralLimitExceedsMax,
+    );
 }
 
 // ============================================================================
@@ -615,7 +625,10 @@ fn test_collateral_commitment_helper_prevents_invalid_state() {
 
     // State is unchanged — commitment not recorded
     let config = client.get_collateral_config();
-    assert_eq!(config.sme_commitment, crate::CollateralCommitmentSnapshot::None);
+    assert_eq!(
+        config.sme_commitment,
+        crate::CollateralCommitmentSnapshot::None
+    );
 
     // Now record a valid amount
     client.record_sme_collateral_commitment(&asset, &1_000i128);
@@ -871,7 +884,10 @@ fn test_absent_pledge_key_get_sme_collateral_returns_none() {
     // Never called record_sme_collateral_commitment — pledge key absent.
     assert_eq!(client.get_sme_collateral_commitment(), None);
     let cfg = client.get_collateral_config();
-    assert_eq!(cfg.sme_commitment, crate::CollateralCommitmentSnapshot::None);
+    assert_eq!(
+        cfg.sme_commitment,
+        crate::CollateralCommitmentSnapshot::None
+    );
     let state = client.get_collateral_state();
     assert!(!state.is_set);
     assert_eq!(state.amount, 0);
@@ -935,8 +951,7 @@ fn test_batch_record_one_zero_amount_rejects_all_atomically() {
     init_escrow(&env, &client, &admin, &sme);
     let a1 = Symbol::new(&env, "A");
     let a2 = Symbol::new(&env, "B");
-    let items =
-        soroban_sdk::Vec::from_array(&env, [(a1.clone(), 500i128), (a2.clone(), 0i128)]);
+    let items = soroban_sdk::Vec::from_array(&env, [(a1.clone(), 500i128), (a2.clone(), 0i128)]);
 
     assert_contract_error(
         client.try_batch_record_collateral(&items),
@@ -953,8 +968,7 @@ fn test_batch_record_one_empty_asset_rejects_all_atomically() {
     init_escrow(&env, &client, &admin, &sme);
     let empty = Symbol::new(&env, "");
     let ok = Symbol::new(&env, "USDC");
-    let items =
-        soroban_sdk::Vec::from_array(&env, [(ok, 500i128), (empty, 500i128)]);
+    let items = soroban_sdk::Vec::from_array(&env, [(ok, 500i128), (empty, 500i128)]);
 
     assert_contract_error(
         client.try_batch_record_collateral(&items),
@@ -971,8 +985,7 @@ fn test_batch_record_one_over_ceiling_rejects_all_atomically() {
     client.set_collateral_limit(&1_000i128);
     let a1 = Symbol::new(&env, "OK");
     let a2 = Symbol::new(&env, "BAD");
-    let items =
-        soroban_sdk::Vec::from_array(&env, [(a1, 999i128), (a2, 1_001i128)]);
+    let items = soroban_sdk::Vec::from_array(&env, [(a1, 999i128), (a2, 1_001i128)]);
 
     assert_contract_error(
         client.try_batch_record_collateral(&items),
@@ -1069,7 +1082,10 @@ fn test_deterministic_sequence_two_runs_equal() {
     assert_eq!(lim1, lim2);
     assert_eq!(lim1, 6_000);
     assert_eq!(stored1.as_ref().unwrap().amount, 6_000);
-    assert_eq!(stored1.as_ref().unwrap().amount, stored2.as_ref().unwrap().amount);
+    assert_eq!(
+        stored1.as_ref().unwrap().amount,
+        stored2.as_ref().unwrap().amount
+    );
     assert_eq!(stored1.as_ref().unwrap().recorded_at, 5);
     assert_eq!(
         stored1.as_ref().unwrap().recorded_at,
@@ -1172,8 +1188,8 @@ fn test_collateral_error_discriminants_pinned() {
     assert_eq!(EscrowError::CollateralLimitNotPositive as u32, 64);
     assert_eq!(EscrowError::CollateralLimitExceedsMax as u32, 65);
     assert_eq!(EscrowError::CollateralLimitExceeded as u32, 66);
-    assert_eq!(EscrowError::CollateralBatchEmpty as u32, 67);
-    assert_eq!(EscrowError::CollateralBatchTooLarge as u32, 68);
+    assert_eq!(EscrowError::CollateralBatchEmpty as u32, 272);
+    assert_eq!(EscrowError::CollateralBatchTooLarge as u32, 273);
 }
 
 #[test]
